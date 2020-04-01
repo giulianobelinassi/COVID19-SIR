@@ -170,12 +170,13 @@ class Learner(object):
         extended_actual = np.concatenate((data.values, [None] * (size - len(data.values))))
         extended_recovered = np.concatenate((recovered.values, [None] * (size - len(recovered.values))))
         extended_death = np.concatenate((death.values, [None] * (size - len(death.values))))
+        extended_healed = np.concatenate((healed.values, [None] * (size - len(healed.values))))
 
         sir = solve_ivp(SIR, [0, size], [s_0,i_0,r_0], t_eval=np.arange(0, size, 1))
 
         R = sir.y[2][0:len(death)]
 
-        optimal = minimize(loss2, gamma*0.02, args=(gamma, R, healed, death),
+        optimal = minimize(loss2, gamma*0.02, args=(gamma, recovered, healed, death),
                           bounds=[(0.00000001, gamma),])
 
         print(optimal)
@@ -186,7 +187,7 @@ class Learner(object):
         prediction_death = a*sir.y[2]/gamma
         prediction_healed = sir.y[2] - prediction_death
 
-        return new_index, extended_actual, extended_recovered, extended_death, sir, prediction_death, prediction_healed
+        return new_index, extended_actual, extended_recovered, extended_death, sir, prediction_death, prediction_healed, extended_healed
 
 
     def train(self):
@@ -210,15 +211,15 @@ class Learner(object):
         recovered = self.recovered
         data = self.data
 
-        new_index, extended_actual, extended_recovered, extended_death, prediction, prediction_death, prediction_healed = self.predict(beta, gamma, data, recovered, healed, death, self.country, self.s_0, self.i_0, self.r_0)
+        new_index, extended_actual, extended_recovered, extended_death, prediction, prediction_death, prediction_healed, extended_healed = self.predict(beta, gamma, data, recovered, death, healed, self.country, self.s_0, self.i_0, self.r_0)
+
         df = pd.DataFrame({'Infected data': extended_actual,
-                            'Recovered data': extended_recovered,
                             'Death data': extended_death,
                             'Susceptible': prediction.y[0],
                             'Infected': prediction.y[1],
-                            'R': prediction.y[2],
-                            'Recovered': prediction_healed,
-                            'Predicted Deaths': prediction_death},
+                            'Predicted Recovered (Alive)': prediction_healed,
+                            'Predicted Deaths': prediction_death,
+                            'Recovered (Alive)': extended_healed},
                             index=new_index)
         fig, ax = plt.subplots(figsize=(15, 10))
         ax.set_title(self.country)
@@ -251,7 +252,7 @@ def loss2(a, gamma, recovered, healed, death):
     l1 = np.sqrt(np.mean((estimated_death - death)**2))
     l2 = np.sqrt(np.mean((estimated_healed - healed)**2))
 
-    alpha = 0.3
+    alpha = 0.1
     return alpha*l1 + (1-alpha)*l2
 
 def main():
