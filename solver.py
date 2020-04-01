@@ -97,20 +97,22 @@ def parse_arguments():
 
 
 def remove_province(input_file, output_file):
-    input = open(input_file, "r")
-    output = open(output_file, "w")
-    output.write(input.readline())
-    for line in input:
-        if line.lstrip().startswith(","):
-            output.write(line)
-    input.close()
-    output.close()
+    pass
+    #input = open(input_file, "r")
+    #output = open(output_file, "w")
+    #output.write(input.readline())
+    #for line in input:
+    #    if line.lstrip().startswith(","):
+    #        output.write(line)
+    #input.close()
+    #output.close()
 
 
 def download_data(url_dictionary):
+    pass
     #Lets download the files
-    for url_title in url_dictionary.keys():
-        urllib.request.urlretrieve(url_dictionary[url_title], "./data/" + url_title)
+    #for url_title in url_dictionary.keys():
+    #    urllib.request.urlretrieve(url_dictionary[url_title], "./data/" + url_title)
 
 
 def load_json(json_file_str):
@@ -194,7 +196,7 @@ class Learner(object):
         self.death = self.load_dead(self.country)
         self.healed = self.load_recovered(self.country)
         self.recovered = self.healed + self.death
-        self.data = self.load_confirmed(self.country)
+        self.data = self.load_confirmed(self.country) - self.recovered
 
         optimal = minimize(loss, [0.001, 0.001], args=(self.data, self.recovered, self.s_0, self.i_0, self.r_0), method='L-BFGS-B', bounds=[(0.00000001, 0.4), (0.00000001, 0.4)])
         print(optimal)
@@ -239,7 +241,7 @@ def loss(point, data, recovered, s_0, i_0, r_0):
     solution = solve_ivp(SIR, [0, size], [s_0,i_0,r_0], t_eval=np.arange(0, size, 1), vectorized=True)
     l1 = np.sqrt(np.mean((solution.y[1] - data)**2))
     l2 = np.sqrt(np.mean((solution.y[2] - recovered)**2))
-    alpha = 0.2
+    alpha = 0.1
     return alpha * l1 + (1 - alpha) * l2
 
 def loss2(a, gamma, recovered, healed, death):
