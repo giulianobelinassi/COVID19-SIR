@@ -10,6 +10,7 @@ import sys
 import json
 import ssl
 import urllib.request
+import pdb
 
 
 def parse_arguments():
@@ -149,7 +150,6 @@ class Learner(object):
         df = pd.read_csv('data/time_series_19-covid-Deaths-country.csv')
         country_df = df[df['Country/Region'] == country]
         return country_df.iloc[0].loc[self.start_date:]
-    
 
     def extend_index(self, index, new_size):
         values = index.values
@@ -159,7 +159,7 @@ class Learner(object):
             values = np.append(values, datetime.strftime(current, '%m/%d/%y'))
         return values
 
-    def predict(self, beta, gamma, data, recovered, death, country, s_0, i_0, r_0):
+    def predict(self, beta, gamma, data, recovered, death, healed, country, s_0, i_0, r_0):
         new_index = self.extend_index(data.index, self.predict_range)
         size = len(new_index)
         def SIR(t, y):
@@ -170,24 +170,61 @@ class Learner(object):
         extended_actual = np.concatenate((data.values, [None] * (size - len(data.values))))
         extended_recovered = np.concatenate((recovered.values, [None] * (size - len(recovered.values))))
         extended_death = np.concatenate((death.values, [None] * (size - len(death.values))))
-        return new_index, extended_actual, extended_recovered, extended_death, solve_ivp(SIR, [0, size], [s_0,i_0,r_0], t_eval=np.arange(0, size, 1))
+
+        sir = solve_ivp(SIR, [0, size], [s_0,i_0,r_0], t_eval=np.arange(0, size, 1))
+
+        R = sir.y[2][0:len(death)]
+
+        optimal = minimize(loss2, gamma*0.02, args=(gamma, R, healed, death),
+                          bounds=[(0.00000001, gamma),])
+
+        print(optimal)
+
+        a = optimal.x[0]
+        b = gamma - a
+
+        prediction_death = a*sir.y[2]/gamma
+        prediction_healed = sir.y[2] - prediction_death
+
+        return new_index, extended_actual, extended_recovered, extended_death, sir, prediction_death, prediction_healed
 
 
     def train(self):
-        recovered = self.load_recovered(self.country)
-        death = self.load_dead(self.country)
-        data = (self.load_confirmed(self.country) - recovered - death)
-        
-        optimal = minimize(loss, [0.001, 0.001], args=(data, recovered, self.s_0, self.i_0, self.r_0), method='L-BFGS-B', bounds=[(0.00000001, 0.4), (0.00000001, 0.4)])
+        self.death = self.load_dead(self.country)
+        self.healed = self.load_recovered(self.country)
+        self.recovered = self.healed + self.death
+        self.data = self.load_confirmed(self.country)
+
+        optimal = minimize(loss, [0.001, 0.001], args=(self.data, self.recovered, self.s_0, self.i_0, self.r_0), method='L-BFGS-B', bounds=[(0.00000001, 0.4), (0.00000001, 0.4)])
         print(optimal)
         beta, gamma = optimal.x
-        new_index, extended_actual, extended_recovered, extended_death, prediction = self.predict(beta, gamma, data, recovered, death, self.country, self.s_0, self.i_0, self.r_0)
-        df = pd.DataFrame({'Infected data': extended_actual, 'Recovered data': extended_recovered, 'Death data': extended_death, 'Susceptible': prediction.y[0], 'Infected': prediction.y[1], 'Recovered': prediction.y[2]}, index=new_index)
+        self.optimal_beta = beta
+        self.optimal_gamma = gamma
+
+    def plot(self):
+        beta = self.optimal_beta
+        gamma = self.optimal_gamma
+
+        death = self.death
+        healed = self.healed
+        recovered = self.recovered
+        data = self.data
+
+        new_index, extended_actual, extended_recovered, extended_death, prediction, prediction_death, prediction_healed = self.predict(beta, gamma, data, recovered, healed, death, self.country, self.s_0, self.i_0, self.r_0)
+        df = pd.DataFrame({'Infected data': extended_actual,
+                            'Recovered data': extended_recovered,
+                            'Death data': extended_death,
+                            'Susceptible': prediction.y[0],
+                            'Infected': prediction.y[1],
+                            'R': prediction.y[2],
+                            'Recovered': prediction_healed,
+                            'Predicted Deaths': prediction_death},
+                            index=new_index)
         fig, ax = plt.subplots(figsize=(15, 10))
         ax.set_title(self.country)
         df.plot(ax=ax)
         print(f"country={self.country}, beta={beta:.8f}, gamma={gamma:.8f}, r_0:{(beta/gamma):.8f}")
-        fig.savefig(f"{self.country}.png")
+        fig.savefig(self.country + '.png')
 
 
 def loss(point, data, recovered, s_0, i_0, r_0):
@@ -201,9 +238,21 @@ def loss(point, data, recovered, s_0, i_0, r_0):
     solution = solve_ivp(SIR, [0, size], [s_0,i_0,r_0], t_eval=np.arange(0, size, 1), vectorized=True)
     l1 = np.sqrt(np.mean((solution.y[1] - data)**2))
     l2 = np.sqrt(np.mean((solution.y[2] - recovered)**2))
-    alpha = 0.1
+    alpha = 0.2
     return alpha * l1 + (1 - alpha) * l2
 
+def loss2(a, gamma, recovered, healed, death):
+    size = len(recovered)
+    b = gamma - a
+
+    estimated_death = a*(recovered/gamma)
+    estimated_healed = recovered-estimated_death
+
+    l1 = np.sqrt(np.mean((estimated_death - death)**2))
+    l2 = np.sqrt(np.mean((estimated_healed - healed)**2))
+
+    alpha = 0.3
+    return alpha*l1 + (1-alpha)*l2
 
 def main():
 
@@ -221,6 +270,7 @@ def main():
         learner = Learner(country, loss, startdate, predict_range, s_0, i_0, r_0)
         #try:
         learner.train()
+        learner.plot()
         #except BaseException:
         #    print('WARNING: Problem processing ' + str(country) +
         #        '. Be sure it exists in the data exactly as you entry it.' +
