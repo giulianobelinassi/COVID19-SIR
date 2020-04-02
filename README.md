@@ -43,3 +43,50 @@ The data used by this simulation is available in:
 
 - [CSSEGISandData/COVID-19](https://github.com/CSSEGISandData/COVID-19)
 
+## Model
+
+This program implements a modification of the SIR (Subject Infected Recovered)
+model. SIR consists of the following system of equations:
+
+![SIR](/equations/images/sir.gif)
+
+Where:
+- S(t) is the number of people subject to infection at time t.
+- I(t) is the number of people infected at time t.
+- R(t) is the number of people recovered from infection at time t.
+- N is the population size.
+- β is how intense the disease spreads.
+- γ is how fast the people recovers from it.
+
+Therefore, SIR model doesn't model the number of deaths because it counts it
+as Recovered. Therefore, in Recovered we have the number of deaths and the
+number of people that is cured from the disease.
+
+Therefore, we can split the recovered R(t) into two other functions, and
+calculate their rate of change over time:
+
+![RCD](/equations/images/cd.gif)
+
+Where C(t) is the number of people cured from the disease, and D(t) is the
+number of people killed by the disease.
+
+Since the death rate seems to be a linear fraction of the infected people
+(1.5% in China, for instance), then we can assume that:
+
+![GAB](/equations/images/gamma_a_b.gif)
+
+Where *a* is the death rate, and *b* is the cure rate.
+
+Therefore, the SIR-D model can be viewed as:
+
+![SIRD](/equations/images/sird.gif)
+
+However we can calculate C(t) and D(t) by using R(t), because
+
+![D](/equations/images/D.gif)
+
+Where K is a constant. Here we assume that k = 0 because we start with 0 deaths.
+Finally, we can also compute C(t) by:
+
+![D](/equations/images/C.gif)
+
