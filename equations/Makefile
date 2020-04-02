@@ -1,7 +1,7 @@
 TEX = pdflatex
 TEXFLAGS = -interaction nonstopmode -halt-on-error -file-line-error --interaction=batchmode
 CONVERT = convert
-CONVERTFLAGS = -density 300 -quality 90
+CONVERTFLAGS = -density 300 -quality 90 -resize 75\%
 PDFCROP=pdfcrop
 
 RM = rm -f
