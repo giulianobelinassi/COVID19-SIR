@@ -274,11 +274,6 @@ def loss(point, data, recovered, s_0, i_0, r_0):
         R = y[2]
         return [-beta*S*I, beta*S*I-gamma*I, gamma*I]
 
-    # solve ODE by solve_ivp    
-    # solution = solve_ivp(SIR, [0, size], [s_0,i_0,r_0], t_eval=np.arange(0, size, 1), vectorized=True)
-    # l1 = np.sqrt(np.mean((sir.y[1] - data)**2))
-    # l2 = np.sqrt(np.mean((sir.y[2] - recovered)**2))
-
     # solve ODE by odeint
     y0=[s_0,i_0,r_0]
     tspan=np.arange(0, size, 1)
