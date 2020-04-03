@@ -19,7 +19,7 @@ import pdb
 def parse_arguments():
     parser = argparse.ArgumentParser()
     
-    country1="Brazil"
+    country1="China"
 
     if country1=="Brazil":
         date="3/3/20"
@@ -29,8 +29,8 @@ def parse_arguments():
 
     if country1=="China":
         date="1/22/20"
-        s0=170000
-        i0=400
+        s0=250000
+        i0=1200
         r0=-80000
 
     if country1=="Italy":
@@ -233,7 +233,7 @@ class Learner(object):
         self.recovered = self.healed + self.death
         self.data = self.load_confirmed(self.country) - self.recovered
 
-        optimal = minimize(loss, [0.001, 0.001], args=(self.data, self.recovered, self.s_0, self.i_0, self.r_0), method='L-BFGS-B', bounds=[(0.00000001, 0.4), (0.00000001, 0.4)])
+        optimal = minimize(loss, [0.001, 0.001], args=(self.data, self.recovered, self.s_0, self.i_0, self.r_0), method='L-BFGS-B', bounds=[(0.00000001, 0.8), (0.00000001, 0.8)])
         print(optimal)
         beta, gamma = optimal.x
         self.optimal_beta = beta
