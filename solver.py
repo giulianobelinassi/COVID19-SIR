@@ -19,7 +19,7 @@ import pdb
 def parse_arguments():
     parser = argparse.ArgumentParser()
     
-    country1="China"
+    country1="Brazil"
 
     if country1=="Brazil":
         date="3/3/20"
@@ -196,7 +196,7 @@ class Learner(object):
     def predict(self, beta, gamma, data, recovered, death, healed, country, s_0, i_0, r_0):
         new_index = self.extend_index(data.index, self.predict_range)
         size = len(new_index)
-        def SIR(t,y):
+        def SIR(y,t):
             S = y[0]
             I = y[1]
             R = y[2]
@@ -206,26 +206,25 @@ class Learner(object):
         extended_death = np.concatenate((death.values, [None] * (size - len(death.values))))
         extended_healed = np.concatenate((healed.values, [None] * (size - len(healed.values))))
 
-        sir = solve_ivp(SIR, [0, size], [s_0,i_0,r_0], t_eval=np.arange(0, size, 1))
-        R = sir.y[2][0:len(death)]
+        # solve ODE by odeint
+        y0=[s_0,i_0,r_0]
+        tspan=np.arange(0, size, 1)
+        res=odeint(SIR,y0,tspan)
+        R = res[0:len(death),2]
 
         optimal = minimize(loss2, gamma*0.02, args=(gamma, recovered, healed, death),
                           bounds=[(0.00000001, gamma),])
-
-        #I tried to change to odeint but I do not know how to make sir.y[] data structure
-        #the answer of odeint is an array not a data frame
-        #y=[res[:,0], res[:,1], res[:,2]]
-        #just need to put it in sir as sir.y[0], sir.y[1], sir.y[2]
-
         print(optimal)
-
         a = optimal.x[0]
         b = gamma - a
 
-        prediction_death = a*sir.y[2]/gamma
-        prediction_healed = sir.y[2] - prediction_death
+        prediction_death = a*res[:,2]/gamma
+        prediction_healed = res[:,2] - prediction_death
+        y0=res[:,0]
+        y1=res[:,1]
+        y2=res[:,2]
 
-        return new_index, extended_actual, extended_recovered, extended_death, sir, prediction_death, prediction_healed, extended_healed
+        return new_index, extended_actual, extended_recovered, extended_death, y0, y1, y2, prediction_death, prediction_healed, extended_healed
 
     def train(self):
         self.death = self.load_dead(self.country)
@@ -248,12 +247,12 @@ class Learner(object):
         recovered = self.recovered
         data = self.data
 
-        new_index, extended_actual, extended_recovered, extended_death, prediction, prediction_death, prediction_healed, extended_healed = self.predict(beta, gamma, data, recovered, death, healed, self.country, self.s_0, self.i_0, self.r_0)
+        new_index, extended_actual, extended_recovered, extended_death, y0, y1, y2, prediction_death, prediction_healed, extended_healed = self.predict(beta, gamma, data, recovered, death, healed, self.country, self.s_0, self.i_0, self.r_0)
 
         df = pd.DataFrame({'Infected data': extended_actual,
                             'Death data': extended_death,
-                            'Susceptible': prediction.y[0],
-                            'Infected': prediction.y[1],
+                            'Susceptible': y0,
+                            'Infected': y1,
                             'Predicted Recovered (Alive)': prediction_healed,
                             'Predicted Deaths': prediction_death,
                             'Recovered (Alive)': extended_healed},
