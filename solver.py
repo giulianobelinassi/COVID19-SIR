@@ -1,8 +1,11 @@
 #!/usr/bin/python
 import numpy as np
 import pandas as pd
+from csv import reader
+from csv import writer
 from scipy.integrate import solve_ivp
 from scipy.optimize import minimize
+from scipy.integrate import odeint
 import matplotlib.pyplot as plt
 from datetime import timedelta, datetime
 import argparse
@@ -16,70 +19,85 @@ import pdb
 def parse_arguments():
     parser = argparse.ArgumentParser()
     
+    country1="Brazil"
+
+    if country1=="Brazil":
+        date="3/3/20"
+        s0=25000
+        i0=27
+        r0=-35
+
+    if country1=="China":
+        date="1/22/20"
+        s0=250000
+        i0=1200
+        r0=-80000
+
+    if country1=="Italy":
+        date="1/31/20"
+        s0=160000
+        i0=23
+        r0=15
+
+    if country1=="France":
+        date="2/25/20"
+        s0=95e3
+        i0=250
+        r0=-75
+
+    if country1=="United Kingdom":
+        date="2/25/20"
+        s0=80000
+        i0=22
+        r0=-5
+
+    if country1=="US":
+        date="2/25/20"
+        s0=470000
+        i0=10
+        r0=-50
+
     parser.add_argument(
         '--countries',
-        action='store',
         dest='countries',
-        help='Countries on CSV format. ' +
-        'It must exact match the data names or you will get out of bonds error.',
-        metavar='COUNTRY_CSV',
         type=str,
-        default="")
+        default=country1)
     
     parser.add_argument(
         '--download-data',
-        action='store_true',
         dest='download_data',
-        help='Download fresh data and then run',
-        default=False
+        default=True
     )
 
     parser.add_argument(
         '--start-date',
-        required=False,
-        action='store',
         dest='start_date',
-        help='Start date on MM/DD/YY format ... I know ...' +
-        'It defaults to first data available 1/22/20',
-        metavar='START_DATE',
         type=str,
-        default="1/22/20")
-
+        default=date)
+    
     parser.add_argument(
         '--prediction-days',
-        required=False,
         dest='predict_range',
-        help='Days to predict with the model. Defaults to 150',
-        metavar='PREDICT_RANGE',
         type=int,
         default=150)
 
     parser.add_argument(
         '--S_0',
-        required=False,
         dest='s_0',
-        help='S_0. Defaults to 100000',
-        metavar='S_0',
         type=int,
-        default=100000)
+        default=s0)
 
     parser.add_argument(
         '--I_0',
-        required=False,
         dest='i_0',
-        help='I_0. Defaults to 2',
-        metavar='I_0',
         type=int,
-        default=2)
+        default=i0)
 
     parser.add_argument(
         '--R_0',
-        required=False,
         dest='r_0',
-        help='R_0. Defaults to 0',
-        metavar='R_0',
         type=int,
-        default=10)
+        default=r0)
 
     args = parser.parse_args()
 
@@ -96,16 +114,30 @@ def parse_arguments():
     return (country_list, args.download_data, args.start_date, args.predict_range, args.s_0, args.i_0, args.r_0)
 
 
-def remove_province(input_file, output_file):
-    pass
-    #input = open(input_file, "r")
-    #output = open(output_file, "w")
-    #output.write(input.readline())
-    #for line in input:
-    #    if line.lstrip().startswith(","):
-    #        output.write(line)
-    #input.close()
-    #output.close()
+def sumCases_province(input_file, output_file):
+    with open(input_file, "r") as read_obj, open(output_file,'w',newline='') as write_obj:
+        csv_reader = reader(read_obj)
+        csv_writer = writer(write_obj)
+               
+        lines=[]
+        for line in csv_reader:
+            lines.append(line)    
+
+        i=0
+        ix=0
+        for i in range(0,len(lines[:])-1):
+            if lines[i][1]==lines[i+1][1]:
+                if ix==0:
+                    ix=i
+                lines[ix][4:] = np.asfarray(lines[ix][4:],float)+np.asfarray(lines[i+1][4:] ,float)
+            else:
+                if not ix==0:
+                    lines[ix][0]=""
+                    csv_writer.writerow(lines[ix])
+                    ix=0
+                else:
+                    csv_writer.writerow(lines[i])
+            i+=1     
 
 
 def download_data(url_dictionary):
@@ -164,7 +196,7 @@ class Learner(object):
     def predict(self, beta, gamma, data, recovered, death, healed, country, s_0, i_0, r_0):
         new_index = self.extend_index(data.index, self.predict_range)
         size = len(new_index)
-        def SIR(t, y):
+        def SIR(y,t):
             S = y[0]
             I = y[1]
             R = y[2]
@@ -174,23 +206,25 @@ class Learner(object):
         extended_death = np.concatenate((death.values, [None] * (size - len(death.values))))
         extended_healed = np.concatenate((healed.values, [None] * (size - len(healed.values))))
 
-        sir = solve_ivp(SIR, [0, size], [s_0,i_0,r_0], t_eval=np.arange(0, size, 1))
-
-        R = sir.y[2][0:len(death)]
+        # solve ODE by odeint
+        y0=[s_0,i_0,r_0]
+        tspan=np.arange(0, size, 1)
+        res=odeint(SIR,y0,tspan)
+        R = res[0:len(death),2]
 
         optimal = minimize(loss2, gamma*0.02, args=(gamma, recovered, healed, death),
                           bounds=[(0.00000001, gamma),])
-
         print(optimal)
-
         a = optimal.x[0]
         b = gamma - a
 
-        prediction_death = a*sir.y[2]/gamma
-        prediction_healed = sir.y[2] - prediction_death
+        prediction_death = a*res[:,2]/gamma
+        prediction_healed = res[:,2] - prediction_death
+        y0=res[:,0]
+        y1=res[:,1]
+        y2=res[:,2]
 
-        return new_index, extended_actual, extended_recovered, extended_death, sir, prediction_death, prediction_healed, extended_healed
-
+        return new_index, extended_actual, extended_recovered, extended_death, y0, y1, y2, prediction_death, prediction_healed, extended_healed
 
     def train(self):
         self.death = self.load_dead(self.country)
@@ -198,7 +232,7 @@ class Learner(object):
         self.recovered = self.healed + self.death
         self.data = self.load_confirmed(self.country) - self.recovered
 
-        optimal = minimize(loss, [0.001, 0.001], args=(self.data, self.recovered, self.s_0, self.i_0, self.r_0), method='L-BFGS-B', bounds=[(0.00000001, 0.4), (0.00000001, 0.4)])
+        optimal = minimize(loss, [0.001, 0.001], args=(self.data, self.recovered, self.s_0, self.i_0, self.r_0), method='L-BFGS-B', bounds=[(0.00000001, 0.8), (0.00000001, 0.8)])
         print(optimal)
         beta, gamma = optimal.x
         self.optimal_beta = beta
@@ -213,12 +247,12 @@ class Learner(object):
         recovered = self.recovered
         data = self.data
 
-        new_index, extended_actual, extended_recovered, extended_death, prediction, prediction_death, prediction_healed, extended_healed = self.predict(beta, gamma, data, recovered, death, healed, self.country, self.s_0, self.i_0, self.r_0)
+        new_index, extended_actual, extended_recovered, extended_death, y0, y1, y2, prediction_death, prediction_healed, extended_healed = self.predict(beta, gamma, data, recovered, death, healed, self.country, self.s_0, self.i_0, self.r_0)
 
         df = pd.DataFrame({'Infected data': extended_actual,
                             'Death data': extended_death,
-                            'Susceptible': prediction.y[0],
-                            'Infected': prediction.y[1],
+                            'Susceptible': y0,
+                            'Infected': y1,
                             'Predicted Recovered (Alive)': prediction_healed,
                             'Predicted Deaths': prediction_death,
                             'Recovered (Alive)': extended_healed},
@@ -233,14 +267,20 @@ class Learner(object):
 def loss(point, data, recovered, s_0, i_0, r_0):
     size = len(data)
     beta, gamma = point
-    def SIR(t, y):
+    def SIR(y,t):
+    # def SIR(t, y):
         S = y[0]
         I = y[1]
         R = y[2]
         return [-beta*S*I, beta*S*I-gamma*I, gamma*I]
-    solution = solve_ivp(SIR, [0, size], [s_0,i_0,r_0], t_eval=np.arange(0, size, 1), vectorized=True)
-    l1 = np.sqrt(np.mean((solution.y[1] - data)**2))
-    l2 = np.sqrt(np.mean((solution.y[2] - recovered)**2))
+
+    # solve ODE by odeint
+    y0=[s_0,i_0,r_0]
+    tspan=np.arange(0, size, 1)
+    res=odeint(SIR,y0,tspan)
+    l1 = np.sqrt(np.mean((res[:,1] - data)**2))
+    l2 = np.sqrt(np.mean((res[:,2] - recovered)**2))
+
     alpha = 0.1
     return alpha * l1 + (1 - alpha) * l2
 
@@ -254,7 +294,7 @@ def loss2(a, gamma, recovered, healed, death):
     l1 = np.sqrt(np.mean((estimated_death - death)**2))
     l2 = np.sqrt(np.mean((estimated_healed - healed)**2))
 
-    alpha = 0.1
+    alpha = 0.9
     return alpha*l1 + (1-alpha)*l2
 
 def main():
@@ -265,9 +305,9 @@ def main():
         data_d = load_json("./data_url.json")
         download_data(data_d)
 
-    remove_province('data/time_series_19-covid-Confirmed.csv', 'data/time_series_19-covid-Confirmed-country.csv')
-    remove_province('data/time_series_19-covid-Recovered.csv', 'data/time_series_19-covid-Recovered-country.csv')
-    remove_province('data/time_series_19-covid-Deaths.csv', 'data/time_series_19-covid-Deaths-country.csv')
+    sumCases_province('data/time_series_19-covid-Confirmed.csv', 'data/time_series_19-covid-Confirmed-country.csv')
+    sumCases_province('data/time_series_19-covid-Recovered.csv', 'data/time_series_19-covid-Recovered-country.csv')
+    sumCases_province('data/time_series_19-covid-Deaths.csv', 'data/time_series_19-covid-Deaths-country.csv')
 
     for country in countries:
         learner = Learner(country, loss, startdate, predict_range, s_0, i_0, r_0)
